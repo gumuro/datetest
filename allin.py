@@ -33,12 +33,14 @@ st.subheader(f'{content_selection}')
 
 # 在页面上展示其他内容...
 # 这里添加你的应用逻辑
+@st.cache_data
 def get_base64_encoded_gif(gif_path):
     with open(gif_path, "rb") as gif_file:
         encoded_gif = base64.b64encode(gif_file.read()).decode('utf-8')
     return encoded_gif
 
 # 当你确定路径是相对于allin.py的路径时，可以直接使用
+@st.cache_data
 def get_file_path(relative_path):
     return os.path.join("date", relative_path)
 
@@ -58,7 +60,7 @@ if identity == '主催者' and content_selection == '会場内の人流ヒート
         gif_date = date_option.replace('.', '')
         gif_filename = f'venue_heatmap_{gif_date}.gif'
         gif_path = get_file_path(gif_filename)
-
+        @st.cache_data
         # 获得Base64编码的GIF
         def get_base64_encoded_gif(gif_path):
             with open(gif_path, "rb") as gif_file:
@@ -87,26 +89,29 @@ if identity == '主催者' and content_selection == '会場内の人流ヒート
             st.error(f"未找到{date_option} {hour_selected}:00的热力图文件。请确保文件存在于指定路径：{heatmap_file_path}")
 elif content_selection == '製品、出展社ランキング':
         # 製品、出展社ランキング的代码块...
-        data_file_path = 'allend.xlsx'
-        data = pd.read_excel(data_file_path)
-        data['出展社ID'] = data['出展社ID'].astype(str)
+        @st.cache_data
+        def load_data(file_path):
+            data = pd.read_excel(file_path) 
+            return data
 
-        # 出展社ランキング
-        grouped_scores_exhibitor = data.groupby(['出展社名', '出展社ID'])['スコア'].sum().reset_index()
-        top10_scores_exhibitor = grouped_scores_exhibitor.nlargest(10, 'スコア')
-        fig_exhibitor = px.bar(top10_scores_exhibitor, x='スコア', y='出展社名', text='スコア', orientation='h', color='出展社ID',
-                                title="出展社人気ランキング10", color_discrete_sequence=px.colors.qualitative.Set3)
+        # 出展社ランキング数据加载
+        exhibitor_ranking_file_path = '1top10.xlsx'
+        top10_scores_exhibitor = load_data(exhibitor_ranking_file_path)
+        top10_scores_exhibitor['出展社ID'] = top10_scores_exhibitor['出展社ID'].astype(str)
+        # 出展社ランキング图表
+        fig_exhibitor = px.bar(top10_scores_exhibitor, x='人気値', y='出展社名', text='人気値', orientation='h', color='出展社ID',
+                                        title="出展社人気ランキング10", color_discrete_sequence=px.colors.qualitative.Set3)
         fig_exhibitor.update_layout(yaxis={'categoryorder':'total ascending'})
         fig_exhibitor.update_traces(texttemplate='%{text}', textposition='outside')
         st.plotly_chart(fig_exhibitor, use_container_width=True)
 
-        # 製品ランキング
-        grouped_scores_product = data.groupby('製品')['スコア'].sum().reset_index()
-        top10_scores_product = grouped_scores_product.nlargest(10, 'スコア')
-        top10_ids = data[data['製品'].isin(top10_scores_product['製品'])].drop_duplicates('製品')[['製品', '出展社名']]
-        top10_scores_product = top10_scores_product.merge(top10_ids, on='製品')
-        fig_product = px.bar(top10_scores_product, x='スコア', y='製品', text='スコア', orientation='h', color='出展社名',
-                                title="製品人気ランキング10", color_discrete_sequence=px.colors.qualitative.Prism)
+        # 製品ランキング数据加载
+        product_ranking_file_path = '2top10.xlsx'
+        top10_scores_product = load_data(product_ranking_file_path)
+
+        # 製品ランキング图表
+        fig_product = px.bar(top10_scores_product, x='人気値', y='製品', text='人気値', orientation='h', color='出展社名',
+                                        title="製品人気ランキング10", color_discrete_sequence=px.colors.qualitative.Prism)
         fig_product.update_layout(yaxis={'categoryorder':'total ascending'})
         fig_product.update_traces(texttemplate='%{text}', textposition='outside')
         st.plotly_chart(fig_product, use_container_width=True)
@@ -136,9 +141,15 @@ elif identity == '主催者' and content_selection == '基本情報':
         st.markdown('[展会詳細はこちら](https://archive.interop.jp/2023/about/)')
         st.write('')
     # 从Excel文件加载公司名单
-    companies = pd.read_excel('shikai.xlsx')
-    companies_df = pd.DataFrame(companies, columns=['出展社名'])
+    # 使用 st.cache_data 来缓存数据加载函数
+    @st.cache_data
+    def load_company_list(file_path):
+        companies = pd.read_excel(file_path)
+        companies_df = pd.DataFrame(companies, columns=['出展社名'])
+        return companies_df
 
+# 调用函数并传入文件路径
+    companies_df = load_company_list('shikai.xlsx')
     # 默认显示的公司数量
     display_count = 3
 
@@ -222,24 +233,23 @@ elif identity == '出展社' and content_selection == '基本情報':
     """, unsafe_allow_html=True)
 elif identity == '出展社' and content_selection == '来場者クラスタリング':
     position_toggle = st.toggle("職務", value=False)
-
+    @st.cache_data
     def load_data(toggle):
         if toggle:
             # 如果toggle为开启状态（True），加载考虑职务的数据集
-            file_name = 'allend1.xlsx'
+            file_name = 'allendn1.xlsx'
         else:
             # 如果toggle为关闭状态（False），加载不考虑职务的数据集
-            file_name = 'allend.xlsx'
-
+            file_name = 'allendn.xlsx'
+    
         df = pd.read_excel(file_name)
-        df = df[df['出展社名'] == 'NTT Com DD株式会社']
         return df
 
     df_final = load_data(position_toggle)
 
     # 根据用户选择调整的数据加载逻辑后的代码继续
     # 使用toggle状态来决定x_axis的值
-    x_axis = '職務スコア' if position_toggle else 'スコア'
+    x_axis = '職務スコア' if position_toggle else '人気値'
 
 
     # 使用Plotly创建3D散点图
@@ -281,55 +291,48 @@ elif identity == '出展社' and content_selection == '来場者クラスタリ�
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 elif identity == '出展社' and content_selection == '自社製品ランキング':
-       # 设置Streamlit页面配置
-       #st.set_page_config(layout="wide")
-       #st.title("データ分析 - 自社製品スコアランキング")
+        @st.cache_data
+        def load_data():
+        # 读取数据，确保路径正确
+            df = pd.read_excel('jishiya.xlsx')
+            return df
 
-       def load_data():
-              # 读取数据，确保路径正确
-              df = pd.read_excel('allend.xlsx')
-              df = df[['出展社名', '製品', 'スコア']]
-              return df
+        # This function will prepare the data for plotting. It is assumed that 'jishaya.xlsx' 
+        # has columns '製品', '人気値', '出展社名', and 'Top'.
+        def prepare_data(df, company_name):
+            # Filter out data for the specific company
+            company_products = df[df['出展社名'] == company_name]
+            return company_products
 
-       def prepare_data(df, 自己会社名):
-              # 先计算所有製品的总得分
-              all_products_scores = df.groupby(['製品', '出展社名'])['スコア'].sum().reset_index()
+        # This function will create a bar chart for the ranking
+        def plot_product_ranking(df):
+            # Create a bar chart figure
+            fig = go.Figure()
+            for _, row in df.iterrows():
+                fig.add_trace(go.Bar(
+                    x=[row['人気値']], 
+                    y=[f"{row['製品']} (Top {int(row['Top'])})"],
+                    orientation='h',
+                    marker=dict(color='blue')
+                ))
+            # Update layout for the figure
+            fig.update_layout(
+                xaxis={'title': '人気値'},
+                yaxis={'title': '製品', 'autorange': "reversed"},
+                title="自社製品スコアランキング",
+                showlegend=False
+            )
+            return fig
 
-              # 计算排名
-              all_products_scores['Rank'] = all_products_scores['スコア'].rank(method='max', ascending=False)
+        # The main app function where we run our Streamlit app
+        def run_app():
+            st.title("自社製品スコアランキング")
 
-              # 筛选出自己公司的产品并按排名排序
-              自己会社製品 = all_products_scores[all_products_scores['出展社名'] == 自己会社名].sort_values(by='Rank', ascending=True)
-              
-              return 自己会社製品
+            df = load_data()
+            company_name = "NTT Com DD株式会社"
+            prepared_data = prepare_data(df, company_name)
+            fig = plot_product_ranking(prepared_data)
+            st.plotly_chart(fig, use_container_width=True)
 
-       def plot_product_ranking(grouped_scores):
-              # 创建图表
-              fig = go.Figure()
-              
-              # 为每个产品绘制条形图
-              for _, row in grouped_scores.iterrows():
-                     fig.add_trace(go.Bar(
-                     x=[row['スコア']],
-                     y=[f"{row['製品']} (Top {int(row['Rank'])})"],
-                     orientation='h',
-                     marker=dict(
-                            color='blue',  # 可以根据需要调整颜色
-                     )
-                     ))
-              
-              # 更新布局，并隐藏凡例
-              fig.update_layout(
-                     xaxis={'title': 'スコア'},
-                     yaxis={'title': '製品', 'autorange': "reversed"},  # Y轴自动逆序显示
-                     title="自社製品スコアランキング",
-                     showlegend=False
-              )
-              return fig
-
-       # 主逻辑
-       df = load_data()
-       自己会社名 = "NTT Com DD株式会社"  # 根据实际情况修改
-       grouped_scores_sorted = prepare_data(df, 自己会社名)
-       fig = plot_product_ranking(grouped_scores_sorted)
-       st.plotly_chart(fig, use_container_width=True)
+        if __name__ == "__main__":
+            run_app()
